@@ -411,12 +411,14 @@ app.get("/api/stores", auth, (req, res) => {
   const { search, sortBy = 'name', sortOrder = 'ASC', storeId } = req.query;
   
   let query = `
-    SELECT s.id, s.name, s.email, s.address, 
+    SELECT s.id, s.name, s.email, s.address,
+           u.name AS owner_name,
            AVG(r.rating) as average_rating,
            COUNT(r.id) as total_ratings,
-           ur.rating as user_rating
-    FROM stores s 
-    LEFT JOIN ratings r ON s.id = r.store_id 
+           MAX(ur.rating) as user_rating
+    FROM stores s
+    LEFT JOIN users u ON s.owner_id = u.id
+    LEFT JOIN ratings r ON s.id = r.store_id
     LEFT JOIN ratings ur ON s.id = ur.store_id AND ur.user_id = ?
     WHERE 1=1
   `;
@@ -433,7 +435,8 @@ app.get("/api/stores", auth, (req, res) => {
     params.push(storeId);
   }
 
-  query += " GROUP BY s.id";
+  // Group by non-aggregated columns to satisfy ONLY_FULL_GROUP_BY
+  query += " GROUP BY s.id, s.name, s.email, s.address, u.name";
   query += ` ORDER BY ${sortBy} ${sortOrder}`;
 
   db.query(query, params, (err, results) => {

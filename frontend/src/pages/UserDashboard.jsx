@@ -220,6 +220,7 @@ export default function UserDashboard() {
                   <p className="text-indigo-100 text-sm">{store.email}</p>
                 </div>
                 <div className="p-5">
+                  <p className="text-xs text-gray-500 mb-1">Owner: <span className="font-medium text-gray-700">{store.owner_name || "No owner"}</span></p>
                   <p className="text-sm text-gray-600 mb-2">{store.address}</p>
                   <div className="flex justify-between items-center mb-3">
                     <div>

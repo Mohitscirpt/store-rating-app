@@ -56,6 +56,18 @@ export default function AdminDashboard() {
   const [userSort, setUserSort] = useState({ field: 'name', direction: 'asc' });
   const [storeSort, setStoreSort] = useState({ field: 'name', direction: 'asc' });
 
+  // Details modals
+  const [userDetails, setUserDetails] = useState(null);
+  const [showUserDetails, setShowUserDetails] = useState(false);
+  const [storeDetails, setStoreDetails] = useState(null);
+  const [showStoreDetails, setShowStoreDetails] = useState(false);
+
+  // Store owners for dropdown
+  const [storeOwners, setStoreOwners] = useState([]);
+
+  // Toast notifications
+  const [toast, setToast] = useState(null); // { type: 'success'|'error', message: string }
+
   useEffect(() => {
     loadDashboardData();
   }, []);
@@ -74,6 +86,7 @@ export default function AdminDashboard() {
       setStats(response.data);
     } catch (error) {
       console.error("Error loading dashboard:", error);
+      setToast({ type: 'error', message: error.response?.data?.error || 'Failed to load dashboard' });
     } finally {
       setLoading(false);
     }
@@ -84,13 +97,14 @@ export default function AdminDashboard() {
       const params = new URLSearchParams();
       if (userFilters.search) params.append("search", userFilters.search);
       if (userFilters.role) params.append("role", userFilters.role);
-      params.append("sortField", userSort.field);
-      params.append("sortDirection", userSort.direction);
+      params.append("sortBy", userSort.field);
+      params.append("sortOrder", userSort.direction.toUpperCase());
 
       const response = await api.get(`/admin/users?${params}`);
       setUsers(response.data);
     } catch (error) {
       console.error("Error loading users:", error);
+      setToast({ type: 'error', message: error.response?.data?.error || 'Failed to load users' });
     }
   };
 
@@ -98,14 +112,31 @@ export default function AdminDashboard() {
     try {
       const params = new URLSearchParams();
       if (storeFilters.search) params.append("search", storeFilters.search);
-      params.append("sortField", storeSort.field);
-      params.append("sortDirection", storeSort.direction);
+      params.append("sortBy", storeSort.field);
+      params.append("sortOrder", storeSort.direction.toUpperCase());
 
       const response = await api.get(`/admin/stores?${params}`);
       setStores(response.data);
     } catch (error) {
       console.error("Error loading stores:", error);
+      setToast({ type: 'error', message: error.response?.data?.error || 'Failed to load stores' });
     }
+  };
+
+  const openUserDetails = async (userId) => {
+    try {
+      const response = await api.get(`/admin/users/${userId}`);
+      setUserDetails(response.data);
+      setShowUserDetails(true);
+    } catch (error) {
+      console.error('Error loading user details:', error);
+      setToast({ type: 'error', message: error.response?.data?.error || 'Failed to load user details' });
+    }
+  };
+
+  const openStoreDetails = (store) => {
+    setStoreDetails(store);
+    setShowStoreDetails(true);
   };
 
   const handleUserSubmit = async (e) => {
@@ -114,6 +145,7 @@ export default function AdminDashboard() {
     
     try {
       await api.post("/admin/users", userForm);
+      setToast({ type: 'success', message: 'User created successfully' });
       setUserForm({
         name: "",
         email: "",
@@ -125,7 +157,7 @@ export default function AdminDashboard() {
       loadUsers();
       loadDashboardData();
     } catch (error) {
-      alert(error.response?.data?.error || "Error creating user");
+      setToast({ type: 'error', message: error.response?.data?.error || 'Error creating user' });
     } finally {
       setUserFormLoading(false);
     }
@@ -137,6 +169,7 @@ export default function AdminDashboard() {
     
     try {
       await api.post("/admin/stores", storeForm);
+      setToast({ type: 'success', message: 'Store created successfully' });
       setStoreForm({
         name: "",
         email: "",
@@ -147,11 +180,34 @@ export default function AdminDashboard() {
       loadStores();
       loadDashboardData();
     } catch (error) {
-      alert(error.response?.data?.error || "Error creating store");
+      setToast({ type: 'error', message: error.response?.data?.error || 'Error creating store' });
     } finally {
       setStoreFormLoading(false);
     }
   };
+
+  // Load store owners for dropdown (role filter supported by backend)
+  const loadStoreOwners = async () => {
+    try {
+      const response = await api.get('/admin/users?role=store_owner&sortBy=name&sortOrder=ASC');
+      setStoreOwners(response.data);
+    } catch (error) {
+      console.error('Error loading store owners:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (showStoreForm && storeOwners.length === 0) {
+      loadStoreOwners();
+    }
+  }, [showStoreForm]);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const handleLogout = () => {
     logout();
@@ -339,6 +395,9 @@ export default function AdminDashboard() {
 
             {/* Users Table */}
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              {users.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">No users found. Adjust filters or add a new user.</div>
+              ) : (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -417,7 +476,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                       {users.map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-50">
+                        <tr key={user.id} className="hover:bg-indigo-50 cursor-pointer" onClick={() => openUserDetails(user.id)}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{user.name}</div>
                       </td>
@@ -446,7 +505,7 @@ export default function AdminDashboard() {
                         )}
                           </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button className="text-indigo-600 hover:text-indigo-900 mr-3">
+                        <button onClick={(e) => { e.stopPropagation(); openUserDetails(user.id); }} className="text-indigo-600 hover:text-indigo-900 mr-3">
                           View Details
                         </button>
                       </td>
@@ -454,6 +513,7 @@ export default function AdminDashboard() {
                       ))}
                     </tbody>
                   </table>
+              )}
             </div>
           </div>
         )}
@@ -492,6 +552,9 @@ export default function AdminDashboard() {
 
             {/* Stores Table */}
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              {stores.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">No stores found. Adjust filters or add a new store.</div>
+              ) : (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -570,7 +633,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {stores.map((store) => (
-                    <tr key={store.id} className="hover:bg-gray-50">
+                    <tr key={store.id} className="hover:bg-indigo-50 cursor-pointer" onClick={() => openStoreDetails(store)}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{store.name}</div>
                       </td>
@@ -604,9 +667,7 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
-                          onClick={() => {
-                            // View store details
-                          }}
+                          onClick={(e) => { e.stopPropagation(); openStoreDetails(store); }}
                           className="text-indigo-600 hover:text-indigo-900 mr-3"
                         >
                           View Details
@@ -616,17 +677,24 @@ export default function AdminDashboard() {
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
         )}
       </main>
 
-      {/* Add User Modal */}
+      {/* Add User Drawer */}
       {showUserForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Add New User</h3>
-            <form onSubmit={handleUserSubmit} className="space-y-4">
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowUserForm(false)}></div>
+          <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Add New User</h3>
+              <button aria-label="Close" onClick={() => setShowUserForm(false)} className="p-2 rounded hover:bg-gray-100">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+              </button>
+            </div>
+            <form onSubmit={handleUserSubmit} className="space-y-4 p-6 overflow-y-auto h-[calc(100%-64px)]">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Name</label>
                 <input
@@ -684,14 +752,14 @@ export default function AdminDashboard() {
                 <button
                   type="submit"
                   disabled={userFormLoading}
-                  className="btn btn-primary flex-1"
+                  className={`flex-1 px-4 py-2 rounded-md text-white ${userFormLoading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                 >
                   {userFormLoading ? "Creating..." : "Create User"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowUserForm(false)}
-                  className="btn btn-secondary flex-1"
+                  className="flex-1 px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700"
                 >
                   Cancel
                 </button>
@@ -701,12 +769,18 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Add Store Modal */}
+      {/* Add Store Drawer */}
       {showStoreForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Store</h3>
-            <form onSubmit={handleStoreSubmit} className="space-y-4">
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowStoreForm(false)}></div>
+          <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Add New Store</h3>
+              <button aria-label="Close" onClick={() => setShowStoreForm(false)} className="p-2 rounded hover:bg-gray-100">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+              </button>
+            </div>
+            <form onSubmit={handleStoreSubmit} className="space-y-4 p-6 overflow-y-auto h-[calc(100%-64px)]">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Store Name</label>
                 <input
@@ -738,27 +812,30 @@ export default function AdminDashboard() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Owner ID (Optional)</label>
-                <input
-                  type="number"
+                <label className="block text-sm font-medium text-gray-700">Owner (Optional)</label>
+                <select
                   value={storeForm.owner_id}
                   onChange={(e) => setStoreForm(prev => ({ ...prev, owner_id: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="Leave empty if no owner"
-                />
+                >
+                  <option value="">No owner</option>
+                  {storeOwners.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name} ({o.email})</option>
+                  ))}
+                </select>
               </div>
               <div className="flex space-x-3">
                 <button
                   type="submit"
                   disabled={storeFormLoading}
-                  className="btn btn-primary flex-1"
+                  className={`flex-1 px-4 py-2 rounded-md text-white ${storeFormLoading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                 >
                   {storeFormLoading ? "Creating..." : "Create Store"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowStoreForm(false)}
-                  className="btn btn-secondary flex-1"
+                  className="flex-1 px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700"
                 >
                   Cancel
                 </button>
@@ -767,6 +844,56 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+      
+      {/* User Details Modal */}
+      {showUserDetails && userDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">User Details</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between"><span className="text-gray-600">Name</span><span className="font-medium">{userDetails.name}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Email</span><span className="font-medium">{userDetails.email}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Address</span><span className="font-medium text-right max-w-[60%] truncate">{userDetails.address}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Role</span><span className="font-medium">{userDetails.role}</span></div>
+              {userDetails.role === 'store_owner' && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Rating</span>
+                  <span className="font-medium">{userDetails.average_rating ? parseFloat(userDetails.average_rating).toFixed(1) : 'N/A'}</span>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button onClick={() => { setShowUserDetails(false); setUserDetails(null); }} className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Store Details Modal */}
+      {showStoreDetails && storeDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Store Details</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between"><span className="text-gray-600">Name</span><span className="font-medium">{storeDetails.name}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Email</span><span className="font-medium">{storeDetails.email}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Address</span><span className="font-medium text-right max-w-[60%] truncate">{storeDetails.address}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Average Rating</span><span className="font-medium">{storeDetails.average_rating ? parseFloat(storeDetails.average_rating).toFixed(1) : 'N/A'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Total Ratings</span><span className="font-medium">{storeDetails.total_ratings ?? 0}</span></div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button onClick={() => { setShowStoreDetails(false); setStoreDetails(null); }} className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-md shadow-lg text-white ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
